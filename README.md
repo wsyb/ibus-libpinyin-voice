@@ -222,6 +222,7 @@ GNU General Public License v2 或更高版本（GPLv2+）。
 
 ## 👤 作者
 
+- Felix Yin \<ybkk1027@gmail.com\>
 - Peng Huang \<shawn.p.huang@gmail.com\>
 - BYVoid \<byvoid1@gmail.com\>
 - Peng Wu \<alexepico@gmail.com\>
