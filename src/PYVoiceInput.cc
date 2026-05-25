@@ -101,6 +101,7 @@ VoiceInput::VoiceInput()
     : m_recording(false),
       m_stop_requested(false),
       m_ctrl_held_after_double(false),
+      m_has_other_key_since_last_ctrl(false),
       m_dl_handle(nullptr),
       m_api(nullptr),
       m_env(nullptr),
@@ -262,29 +263,44 @@ std::string VoiceInput::getLastResult() {
 }
 
 gboolean VoiceInput::handleKeyEvent(guint keyval, guint keycode, guint modifiers) {
-    if (keyval != IBUS_KEY_Control_L && keyval != IBUS_KEY_Control_R)
-        return FALSE;
-
     bool pressed = !(modifiers & IBUS_RELEASE_MASK);
+
+    /* Any non-Ctrl key pressed between two Ctrl presses means this is a
+     * keyboard shortcut (e.g. Ctrl+C, Ctrl+V), not a pure double-Ctrl.
+     * Track it to prevent accidental recording trigger. */
+    if (keyval != IBUS_KEY_Control_L && keyval != IBUS_KEY_Control_R) {
+        if (pressed)
+            m_has_other_key_since_last_ctrl = true;
+        return FALSE;
+    }
 
     if (pressed) {
         auto now = std::chrono::steady_clock::now();
         auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(
             now - m_last_ctrl_press).count();
 
-        if (dt < 400) {
+        if (dt < 400 && dt >= 0) {
+            if (m_has_other_key_since_last_ctrl) {
+                /* Another key was pressed between the two Ctrl presses;
+                 * this is a shortcut combination, not a pure double-Ctrl.
+                 * Reset and ignore. */
+                m_last_ctrl_press = now;
+                m_has_other_key_since_last_ctrl = false;
+                return FALSE;
+            }
             m_ctrl_held_after_double = true;
             startRecording();
             m_last_ctrl_press = std::chrono::steady_clock::time_point();
             return TRUE;
         }
         m_last_ctrl_press = now;
+        m_has_other_key_since_last_ctrl = false;
         return FALSE;
     } else {
-    if (m_ctrl_held_after_double) {
-        m_ctrl_held_after_double = false;
-        playBeepDone("/usr/share/sounds/freedesktop/stereo/complete.oga");
-        stopRecording();
+        if (m_ctrl_held_after_double) {
+            m_ctrl_held_after_double = false;
+            playBeepDone("/usr/share/sounds/freedesktop/stereo/complete.oga");
+            stopRecording();
             return TRUE;
         }
         return FALSE;
