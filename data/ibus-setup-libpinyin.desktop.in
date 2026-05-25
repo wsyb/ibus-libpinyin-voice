@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=IBus LibPinyin Setup
+Comment=Set ibus-libpinyin Preferences
+Exec=@libexecdir@/ibus-setup-libpinyin libpinyin
+Icon=@pkgdatadir@/icons/ibus-pinyin.svg
+NoDisplay=true
+Type=Application
+StartupNotify=true

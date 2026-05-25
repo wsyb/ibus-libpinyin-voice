@@ -1,0 +1,4 @@
+*.o
+/libpinyin.xml
+/libpinyin.xml.in
+/ibus-engine-libpinyin

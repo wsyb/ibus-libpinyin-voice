@@ -1,0 +1,26 @@
+[Desktop Entry]
+Name[ca]=Configuració de IBus LibPinyin
+Name[fr]=Paramètres de IBus LibPinyin
+Name[zh_CN]=IBus 智能拼音配置工具
+Name[zh_HK]=IBus 智能拼音配置工具
+Name[zh_TW]=IBus 智能拼音配置工具
+Name[es]=Configuración de LibPinyin de IBus
+Name[uk]=Налаштування LibPinyin IBus
+Name[de]=IBus LibPinyin Einstellungen
+Name[ka]=IBus LibPinyin-ის მორგება
+Name=IBus LibPinyin Setup
+Comment[ca]=Estableix les preferències ibus-libpinyin
+Comment[fr]=Configurer les préférences d’ibus-libpinyin
+Comment[zh_CN]=设置 IBus 智能拼音首选项
+Comment[zh_HK]=設定 IBus 智能拼音個人偏好
+Comment[zh_TW]=設定 IBus 智能拼音個人偏好
+Comment[es]=Establezca las preferencias de ibus-libpinyin
+Comment[uk]=Налаштування параметрів ibus-libpinyin
+Comment[de]=ibus-libpinyin Optionen einstellen
+Comment[ka]=მოირგეთ ibus-libpinyin-ის პარამეტრები
+Comment=Set ibus-libpinyin Preferences
+Exec=/usr/local/libexec/ibus-setup-libpinyin libpinyin
+Icon=/usr/local/share/ibus-libpinyin/icons/ibus-pinyin.svg
+NoDisplay=true
+Type=Application
+StartupNotify=true

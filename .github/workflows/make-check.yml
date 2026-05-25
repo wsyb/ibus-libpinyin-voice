@@ -1,0 +1,30 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: fedora:rawhide
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: install build dependency
+      run: sudo dnf install -y gettext python3-gobject gcc-c++ gettext-devel libtool pkgconfig sqlite-devel libuuid-devel lua-devel python3-devel json-glib-devel libsoup3-devel desktop-file-utils ibus-devel libpinyin-devel libnotify-devel make gnome-common which awk
+    - name: autoconf
+      run: ./autogen.sh
+    - name: configure
+      run: ./configure --enable-cloud-input-mode
+    - name: make
+      run: make
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck

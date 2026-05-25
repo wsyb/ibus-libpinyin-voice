@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=IBus LibBopomofo Preferences
+Comment=Set ibus-libbopomofo Preferences
+Exec=@libexecdir@/ibus-setup-libpinyin libbopomofo
+Icon=@pkgdatadir@/icons/ibus-bopomofo.svg
+NoDisplay=true
+Type=Application
+StartupNotify=true

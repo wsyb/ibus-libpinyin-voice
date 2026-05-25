@@ -1,0 +1,26 @@
+[Desktop Entry]
+Name[ca]=Preferències de IBus LibBopomofo
+Name[fr]=Préférences de IBus LibBopomofo
+Name[zh_CN]=IBus 注音配置工具
+Name[zh_HK]=IBus 注音配置工具
+Name[zh_TW]=IBus 注音配置工具
+Name[es]=Preferencias de LibBopomofo de IBus
+Name[uk]=Налаштування LibBopomofo IBus
+Name[de]=IBus LibBopomofo Einstellungen
+Name[ka]=IBus LibBopomofo-ის მორგება
+Name=IBus LibBopomofo Preferences
+Comment[ca]=Estableix les preferències d'ibus-libbopomofo
+Comment[fr]=Configurer les préférences d’ibus-libbopomofo
+Comment[zh_CN]=设置 IBus 注音首选项
+Comment[zh_HK]=設定 IBus 注音個人偏好
+Comment[zh_TW]=設定 IBus 注音個人偏好
+Comment[es]=Establezca las preferencias de ibus-libbopomofo
+Comment[uk]=Налаштування параметрів ibus-libbopomofo
+Comment[de]=ibus-libbopomofo Optionen einstellen
+Comment[ka]="ibus-libbopomofo"-ის პარამეტრების დაყენება
+Comment=Set ibus-libbopomofo Preferences
+Exec=/usr/local/libexec/ibus-setup-libpinyin libbopomofo
+Icon=/usr/local/share/ibus-libpinyin/icons/ibus-bopomofo.svg
+NoDisplay=true
+Type=Application
+StartupNotify=true
