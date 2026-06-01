@@ -1,5 +1,0 @@
-ibus-libpinyin (${version}-1) ${serie}; urgency=medium
-
-  * New upstream release.
-
- -- Felix Yin <ybkk1027@gmail.com>  ${date}

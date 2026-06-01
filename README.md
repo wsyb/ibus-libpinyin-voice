@@ -6,36 +6,6 @@ ibus-libpinyin 为 IBus 框架提供智能拼音和注音输入法，内置离�
 
 ---
 
-## 🖥️ 平台支持
-
-### 预编译安装包
-
-GitHub Actions 自动构建以下安装包，推送 `v*` tag 时发布到 [Releases](https://github.com/libpinyin/ibus-libpinyin/releases)：
-
-| 发行版 | 包格式 | 语音输入 | 说明 |
-|--------|--------|---------|------|
-| **Ubuntu 24.04 LTS** | `.deb` | ❌ 不支持 | 推荐，稳定版本，仅有拼音输入 |
-| **Ubuntu 22.04 LTS** | `.deb` | ❌ 不支持 | 旧版 LTS，仅有拼音输入 |
-| **Fedora (rawhide)** | `.rpm` | ✅ 支持 | 滚动更新版本，完整功能 |
-
-> **语音输入说明**：离线语音功能依赖 ONNX Runtime（`libonnxruntime-dev >= 1.17.0`），该库目前仅在 Fedora rawhide 和 Ubuntu 26.04+ 的官方源中可用。Ubuntu 22.04 / 24.04 的官方源尚未收录此库，因此这两个版本的 `.deb` 包仅包含拼音输入功能。
-
-> 其他发行版（Debian、Arch、openSUSE 等）需自行从源码编译，详见下方「编译安装」章节。
-
-### 功能支持矩阵
-
-| 功能 | 依赖 | Ubuntu 24.04 | Ubuntu 22.04 | Fedora | 其他发行版 |
-|------|------|:------------:|:------------:|:------:|:----------:|
-| 拼音 / 双拼 / 注音输入 | ibus + libpinyin | ✅ | ✅ | ✅ | ✅（需自行编译） |
-| 云输入候选 | libsoup + json-glib | ✅ | ✅ | ✅ | ✅（需自行编译） |
-| Lua 扩展 | lua | ✅ | ✅ | ✅ | ✅（需自行编译） |
-| 繁简转换 (OpenCC) | libopencc | ✅ | ✅ | ✅ | ✅（需自行编译） |
-| **离线语音输入** | **ONNX Runtime** | ❌ | ❌ | ✅ | ❌（该库仅在 Ubuntu 26.04+ 和 Fedora rawhide 源中可用） |
-
-> **为什么 Ubuntu 22.04 / 24.04 没有语音？** ONNX Runtime 是较新的 ML 推理库，目前仅在 Ubuntu 26.04+ 和 Fedora rawhide 的官方源中收录。语音功能需要 `libonnxruntime-dev >= 1.17.0`。
-
----
-## 🎤 语音输入功能（核心特色）
 
 无需联网，无需外接服务，**离线运行**的语音识别输入。
 
@@ -197,6 +167,35 @@ ibus restart
 | `--enable-opencc` | 繁简转换（OpenCC） |
 | `--enable-libnotify` | 通知提示 |
 | `--enable-boost` | 使用 Boost 替代 C++0x |
+
+### 卸载
+
+编译安装后，使用以下命令卸载：
+
+```bash
+cd ibus-libpinyin
+sudo make uninstall
+ibus restart
+```
+
+> 如果 `make uninstall` 不可用（例如 `Makefile` 已丢失），可手动删除安装的文件。安装文件通常位于 `/usr/lib/ibus-engine-libpinyin`、`/usr/lib/ibus-setup-libpinyin`、`/usr/share/ibus-libpinyin/` 和 `/usr/share/ibus/component/` 下。
+
+### 恢复原版 ibus-libpinyin
+
+如果系统原本通过包管理器安装了 ibus-libpinyin，手动编译安装后想恢复原版：
+
+```bash
+# 1. 卸载手动编译的版本
+sudo make uninstall  # 在编译目录中执行
+
+# 2. 重新安装发行版的原版包
+sudo apt install --reinstall ibus-libpinyin   # Ubuntu / Debian
+sudo dnf reinstall ibus-libpinyin              # Fedora
+sudo pacman -S ibus-libpinyin                  # Arch Linux
+
+# 3. 重启 IBus
+ibus restart
+```
 
 ---
 
