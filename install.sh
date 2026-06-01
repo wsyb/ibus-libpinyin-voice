@@ -20,6 +20,10 @@ MODEL_DIR="$HOME/.cache/modelscope/hub/models/iic/speech_paraformer-large_asr_na
 MODEL_BASE_URL="https://www.modelscope.cn/models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx/resolve/master"
 MODEL_FILES=("model_quant.onnx" "am.mvn" "tokens.json")
 
+PUNC_MODEL_DIR="$HOME/.cache/modelscope/hub/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx"
+PUNC_MODEL_BASE_URL="https://www.modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx/resolve/master"
+PUNC_MODEL_FILES=("model_quant.onnx" "tokens.json")
+
 BUILD_DEPS="build-essential autoconf automake libtool pkg-config"
 RUNTIME_DEPS="libonnxruntime1.23 libpulse0 libibus-1.0-0 libsqlite3-0 libpinyin15 libopencc1.1 libnotify4"
 BUILD_LIBS="libibus-1.0-dev libsqlite3-dev libpinyin-dev libopencc-dev libpulse-dev libonnxruntime-dev libnotify-dev"
@@ -125,6 +129,24 @@ for f in "${MODEL_FILES[@]}"; do
 done
 log_info "Model ready."
 
+log_info "  Downloading punctuation model..."
+PUNC_MODEL_DIR_USER="$SUDO_USER_HOME/.cache/modelscope/hub/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx"
+mkdir -p "$PUNC_MODEL_DIR_USER"
+
+for f in "${PUNC_MODEL_FILES[@]}"; do
+    if [ -f "$PUNC_MODEL_DIR_USER/$f" ]; then
+        log_info "  $f already exists, skipping."
+    else
+        log_info "  Downloading $f ..."
+        curl -L -C - --progress-bar             "$PUNC_MODEL_BASE_URL/$f"             -o "$PUNC_MODEL_DIR_USER/$f" 2>&1 || {
+            log_error "  Failed to download $f"
+            exit 1
+        }
+        chown "$(id -u "$SUDO_USER")":"$(id -g "$SUDO_USER")" "$PUNC_MODEL_DIR_USER/$f" 2>/dev/null || true
+    fi
+done
+log_info "Punctuation model ready."
+
 log_info "[7/8] Configuring as default input method..."
 im-config -n ibus > /dev/null 2>&1 || true
 SUDO_UID="$(id -u "$SUDO_USER")"
@@ -158,7 +180,7 @@ echo ""
 echo "  Voice Pinyin has been installed and set as default input method."
 echo ""
 echo "  Usage:"
-echo "    Double-press Right Ctrl  ->  Start recording"
+echo "    Hold Right Ctrl          ->  Start recording"
 echo "    Hold to speak, release   ->  Stop & recognize"
 echo ""
 echo "  Switch back to original:"

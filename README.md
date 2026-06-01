@@ -65,19 +65,44 @@ PulseAudio 录音 ─→ FBank 特征提取 ─→ ONNX Runtime ─→ 文本候
 
 ### 模型文件
 
-语音模型需从 ModelScope 下载，放置到：
+语音模型和标点模型需从 ModelScope 下载，`install.sh` 会自动下载。
+
+**ASR 语音识别模型**（Paraformer，必需）：
 
 ```
 ~/.cache/modelscope/hub/models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx/
 ```
 
-所需文件：
+| 文件 | 说明 |
+|------|------|
+| `model_quant.onnx` | Paraformer 量化模型（约 228MB） |
+| `am.mvn` | CMVN 均值和方差文件 |
+| `tokens.json` | 词汇表（8404 字符） |
+
+**SenseVoice 模型**（可选，更好的中英混合识别）：
+
+```
+~/.cache/modelscope/hub/models/iic/SenseVoiceSmall-onnx/
+```
 
 | 文件 | 说明 |
 |------|------|
-| `model_quant.onnx` / `model.int8.onnx` | Paraformer 量化模型（约 70MB） |
+| `model_quant.onnx` | SenseVoice 量化模型（约 231MB） |
 | `am.mvn` | CMVN 均值和方差文件 |
-| `tokens.json` / `tokens.txt` | 词汇表（8404 字符） |
+| `tokens.json` | 词汇表（25055 字符） |
+
+**标点符号模型**（可选，自动添加标点）：
+
+```
+~/.cache/modelscope/hub/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx/
+```
+
+| 文件 | 说明 |
+|------|------|
+| `model_quant.onnx` | 标点模型量化版（约 270MB） |
+| `tokens.json` | 词汇表 |
+
+> **注意**：如果 SenseVoice 或标点模型不存在，引擎会自动回退到 Paraformer + 默认逗号模式。
 
 ### 诊断方法
 

@@ -97,6 +97,59 @@ static std::string findFileInDir(const std::string& dir,
     return "";
 }
 
+static std::string getPuncDir() {
+    const char* home = g_get_home_dir();
+    std::string base = std::string(home) +
+        "/.cache/modelscope/hub/models/iic/"
+        "punc_ct-transformer_zh-cn-common-vocab272727-onnx";
+    if (g_file_test(base.c_str(), G_FILE_TEST_IS_DIR))
+        return base;
+    return "";
+}
+
+/* Decode UTF-8 string into a vector of Unicode codepoints */
+static std::vector<uint32_t> decodeUtf8(const std::string& s) {
+    std::vector<uint32_t> codepoints;
+    size_t i = 0;
+    while (i < s.size()) {
+        uint32_t cp = 0;
+        unsigned char c = (unsigned char)s[i];
+        int bytes = 0;
+        if (c < 0x80) { cp = c; bytes = 1; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1F; bytes = 2; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0F; bytes = 3; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07; bytes = 4; }
+        else { i++; continue; }
+        for (int j = 1; j < bytes && i + j < s.size(); j++) {
+            cp = (cp << 6) | ((unsigned char)s[i + j] & 0x3F);
+        }
+        codepoints.push_back(cp);
+        i += bytes;
+    }
+    return codepoints;
+}
+
+/* Convert a Unicode codepoint to its UTF-8 string */
+static std::string codepointToUtf8(uint32_t cp) {
+    std::string s;
+    if (cp < 0x80) {
+        s += (char)cp;
+    } else if (cp < 0x800) {
+        s += (char)(0xC0 | (cp >> 6));
+        s += (char)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        s += (char)(0xE0 | (cp >> 12));
+        s += (char)(0x80 | ((cp >> 6) & 0x3F));
+        s += (char)(0x80 | (cp & 0x3F));
+    } else {
+        s += (char)(0xF0 | (cp >> 18));
+        s += (char)(0x80 | ((cp >> 12) & 0x3F));
+        s += (char)(0x80 | ((cp >> 6) & 0x3F));
+        s += (char)(0x80 | (cp & 0x3F));
+    }
+    return s;
+}
+
 VoiceInput::VoiceInput()
     : m_recording(false),
       m_stop_requested(false),
@@ -104,7 +157,9 @@ VoiceInput::VoiceInput()
       m_api(nullptr),
       m_env(nullptr),
       m_session(nullptr),
-      m_model_loaded(false)
+      m_model_loaded(false),
+      m_punc_session(nullptr),
+      m_punc_model_loaded(false)
 {
     vlog("VoiceInput: initializing");
 
@@ -146,6 +201,30 @@ VoiceInput::VoiceInput()
         }
     }
     vlog("VoiceInput: tokens loaded, count=%d", (int)m_tokens.size());
+
+    /* Load punctuation model */
+    std::string punc_dir = getPuncDir();
+    if (!punc_dir.empty()) {
+        m_punc_model_path = findFileInDir(punc_dir, {"model_quant.onnx", "model.onnx"});
+        if (!m_punc_model_path.empty()) {
+            std::string punc_tokens_path = findFileInDir(punc_dir, {"tokens.json", "tokens.txt"});
+            if (!punc_tokens_path.empty() && punc_tokens_path.find(".json") != std::string::npos) {
+                std::ifstream f(punc_tokens_path);
+                if (f.is_open()) {
+                    std::string content((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+                    size_t pos = 0;
+                    while ((pos = content.find('"', pos)) != std::string::npos) {
+                        size_t end = content.find('"', pos + 1);
+                        if (end == std::string::npos) break;
+                        m_punc_tokens_str.push_back(content.substr(pos + 1, end - pos - 1));
+                        pos = end + 1;
+                    }
+                }
+            }
+            vlog("VoiceInput: punctuation tokens loaded, count=%d", (int)m_punc_tokens_str.size());
+        }
+    }
 
     initOnnxRuntime();
 }
@@ -227,6 +306,27 @@ bool VoiceInput::initOnnxRuntime() {
 
     m_model_loaded = true;
     vlog("VoiceInput: ONNX model loaded from %s", m_model_path.c_str());
+
+    /* Create punctuation session */
+    if (!m_punc_model_path.empty()) {
+        OrtSessionOptions* punc_opts = nullptr;
+        st = m_api->CreateSessionOptions(&punc_opts);
+        if (!st) {
+            m_api->SetInterOpNumThreads(punc_opts, 4);
+            m_api->SetIntraOpNumThreads(punc_opts, 4);
+            st = m_api->CreateSession(m_env, m_punc_model_path.c_str(), punc_opts, &m_punc_session);
+            if (st) {
+                vlog("VoiceInput: punctuation session failed: %s", m_api->GetErrorMessage(st));
+                m_api->ReleaseStatus(st);
+                m_punc_session = nullptr;
+            } else {
+                m_punc_model_loaded = true;
+                vlog("VoiceInput: punctuation model loaded from %s", m_punc_model_path.c_str());
+            }
+            m_api->ReleaseSessionOptions(punc_opts);
+        }
+    }
+
     return true;
 }
 
@@ -314,15 +414,59 @@ void VoiceInput::stopRecording() {
         auto samples = m_record_buffer;
         m_record_buffer.clear();
         auto t_before_transcribe = std::chrono::steady_clock::now();
-        std::string result = transcribe(samples);
+
+        std::string result;
+        result = transcribe(samples);
+
         auto t_done = std::chrono::steady_clock::now();
         auto transcribe_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_done - t_before_transcribe).count();
         auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_done - t_start).count();
         vlog("VoiceInput: transcribe=%lldms, total=%lldms", (long long)transcribe_ms, (long long)total_ms);
         vlog("VoiceInput: result='%s'", result.c_str());
-        if (!result.empty() && result.back() != '。' && result.back() != '，') {
-            result += "，";
+
+        /* Apply punctuation if model is available */
+        if (m_punc_model_loaded && !result.empty()) {
+            std::vector<uint32_t> codepoints = decodeUtf8(result);
+
+            /* Check if result has any Chinese characters */
+            bool has_chinese = false;
+            for (uint32_t cp : codepoints) {
+                if ((cp >= 0x4E00 && cp <= 0x9FFF) ||   /* CJK Unified */
+                    (cp >= 0x3400 && cp <= 0x4DBF) ||   /* CJK Extension A */
+                    (cp >= 0xF900 && cp <= 0xFAFF)) {   /* CJK Compatibility */
+                    has_chinese = true;
+                    break;
+                }
+            }
+
+            /* Only apply punctuation to Chinese text */
+            if (has_chinese) {
+                std::vector<int> char_ids;
+                for (uint32_t cp : codepoints) {
+                    std::string s = codepointToUtf8(cp);
+                    auto it = std::find(m_punc_tokens_str.begin(), m_punc_tokens_str.end(), s);
+                    if (it != m_punc_tokens_str.end()) {
+                        char_ids.push_back((int)(it - m_punc_tokens_str.begin()));
+                    } else {
+                        char_ids.push_back(0);
+                    }
+                }
+                std::vector<std::string> punc_result = punctuate(char_ids);
+                if (!punc_result.empty()) {
+                    std::string punctuated;
+                    for (size_t i = 0; i < codepoints.size(); i++) {
+                        punctuated += codepointToUtf8(codepoints[i]);
+                        if (i < punc_result.size() && !punc_result[i].empty()) {
+                            punctuated += punc_result[i];
+                        }
+                    }
+                    result = punctuated;
+                    vlog("VoiceInput: after punctuate: '%s'", result.c_str());
+                }
+            }
         }
+
+
         {
             std::lock_guard<std::mutex> lock(m_result_mutex);
             m_last_result = result;
@@ -408,6 +552,96 @@ void VoiceInput::recordThread() {
     pa_context_disconnect(ctx);
     pa_context_unref(ctx);
     pa_mainloop_free(ml);
+}
+
+
+#define CHECK_ORT_PUNC(expr) do { \
+    OrtStatus* _s = (expr); \
+    if (_s) { \
+        m_api->ReleaseStatus(_s); \
+        return {}; \
+    } \
+} while(0)
+
+std::vector<std::string> VoiceInput::punctuate(const std::vector<int>& token_ids) {
+    if (!m_punc_model_loaded || !m_api || token_ids.empty())
+        return {};
+
+    int seq_len = (int)token_ids.size();
+
+    int64_t input_shape[2] = {1, seq_len};
+    int64_t length_shape[1] = {1};
+    int32_t text_length = seq_len;
+
+    OrtMemoryInfo* mem_info = nullptr;
+    CHECK_ORT_PUNC(m_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
+
+    OrtValue* input_tensor = nullptr;
+    CHECK_ORT_PUNC(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, (void*)token_ids.data(), token_ids.size() * sizeof(int32_t),
+        input_shape, 2,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &input_tensor));
+
+    OrtValue* length_tensor = nullptr;
+    CHECK_ORT_PUNC(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, &text_length, sizeof(int32_t),
+        length_shape, 1,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &length_tensor));
+
+    m_api->ReleaseMemoryInfo(mem_info);
+
+    const char* input_names[] = {"inputs", "text_lengths"};
+    const char* output_names[] = {"logits"};
+    OrtValue* inputs[] = {input_tensor, length_tensor};
+    OrtValue* outputs[1] = {nullptr};
+
+    OrtStatus* st = m_api->Run(m_punc_session, nullptr,
+        input_names, inputs, 2,
+        output_names, 1, outputs);
+    m_api->ReleaseValue(input_tensor);
+    m_api->ReleaseValue(length_tensor);
+
+    if (st) {
+        vlog("VoiceInput: punctuation Run failed: %s", m_api->GetErrorMessage(st));
+        m_api->ReleaseStatus(st);
+        return {};
+    }
+
+    OrtTensorTypeAndShapeInfo* type_info = nullptr;
+    CHECK_ORT_PUNC(m_api->GetTensorTypeAndShape(outputs[0], &type_info));
+    int64_t dims[3];
+    size_t dims_count = 3;
+    CHECK_ORT_PUNC(m_api->GetDimensions(type_info, dims, dims_count));
+    m_api->ReleaseTensorTypeAndShapeInfo(type_info);
+
+    int out_len = (int)dims[1];
+    int punc_vocab = (int)dims[2];
+
+    float* logit_data = nullptr;
+    CHECK_ORT_PUNC(m_api->GetTensorMutableData(outputs[0], (void**)&logit_data));
+
+    const char* punc_marks[] = {"", "", "，", "。", "？", "、"};
+
+    std::vector<std::string> result_per_pos;
+    for (int t = 0; t < out_len && t < seq_len; t++) {
+        int best_punc = 0;
+        float best_score = logit_data[t * punc_vocab];
+        for (int v = 1; v < punc_vocab; v++) {
+            if (logit_data[t * punc_vocab + v] > best_score) {
+                best_score = logit_data[t * punc_vocab + v];
+                best_punc = v;
+            }
+        }
+        if (best_punc >= 2 && best_punc <= 5) {
+            result_per_pos.push_back(punc_marks[best_punc]);
+        } else {
+            result_per_pos.push_back("");
+        }
+    }
+
+    if (outputs[0]) m_api->ReleaseValue(outputs[0]);
+
+    return result_per_pos;
 }
 
 std::string VoiceInput::transcribe(const std::vector<int16_t>& samples) {

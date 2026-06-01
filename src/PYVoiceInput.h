@@ -54,19 +54,27 @@ private:
     void* m_dl_handle;
     const OrtApi* m_api;
     OrtEnv* m_env;
+
+    /* Paraformer model (current) */
     OrtSession* m_session;
     bool m_model_loaded;
+    std::vector<std::string> m_tokens;
+
+    /* Punctuation model */
+    OrtSession* m_punc_session;
+    bool m_punc_model_loaded;
+    std::vector<std::string> m_punc_tokens_str;
 
     std::vector<int16_t> m_record_buffer;
     std::mutex m_buffer_mutex;
 
     CMVNStats m_cmvn;
-    std::vector<std::string> m_tokens;
 
     std::string m_model_path;
     std::string m_cmvn_path;
     std::string m_punc_model_path;
-    std::vector<int> m_punc_tokens;
+
+    std::vector<std::string> punctuate(const std::vector<int>& token_ids);
 };
 
 }
