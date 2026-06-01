@@ -14,9 +14,11 @@ GitHub Actions 自动构建以下安装包，推送 `v*` tag 时发布到 [Relea
 
 | 发行版 | 包格式 | 语音输入 | 说明 |
 |--------|--------|---------|------|
-| **Ubuntu 24.04 LTS** | `.deb` | ✅ 支持 | 推荐，完整功能 |
-| **Ubuntu 22.04 LTS** | `.deb` | ❌ 不支持 | 仅有拼音输入，该版本源中无 ONNX Runtime |
-| **Fedora (rawhide)** | `.rpm` | ✅ 支持 | 滚动更新版本 |
+| **Ubuntu 24.04 LTS** | `.deb` | ❌ 不支持 | 推荐，稳定版本，仅有拼音输入 |
+| **Ubuntu 22.04 LTS** | `.deb` | ❌ 不支持 | 旧版 LTS，仅有拼音输入 |
+| **Fedora (rawhide)** | `.rpm` | ✅ 支持 | 滚动更新版本，完整功能 |
+
+> **语音输入说明**：离线语音功能依赖 ONNX Runtime（`libonnxruntime-dev >= 1.17.0`），该库目前仅在 Fedora rawhide 和 Ubuntu 26.04+ 的官方源中可用。Ubuntu 22.04 / 24.04 的官方源尚未收录此库，因此这两个版本的 `.deb` 包仅包含拼音输入功能。
 
 > 其他发行版（Debian、Arch、openSUSE 等）需自行从源码编译，详见下方「编译安装」章节。
 
@@ -28,9 +30,9 @@ GitHub Actions 自动构建以下安装包，推送 `v*` tag 时发布到 [Relea
 | 云输入候选 | libsoup + json-glib | ✅ | ✅ | ✅ | ✅（需自行编译） |
 | Lua 扩展 | lua | ✅ | ✅ | ✅ | ✅（需自行编译） |
 | 繁简转换 (OpenCC) | libopencc | ✅ | ✅ | ✅ | ✅（需自行编译） |
-| **离线语音输入** | **ONNX Runtime** | ✅ | ❌ | ✅ | ❌（该库不在大多数发行版源中） |
+| **离线语音输入** | **ONNX Runtime** | ❌ | ❌ | ✅ | ❌（该库仅在 Ubuntu 26.04+ 和 Fedora rawhide 源中可用） |
 
-> **为什么 Ubuntu 22.04 没有语音？** ONNX Runtime 是较新的 ML 推理库，Ubuntu 22.04 的官方源中尚未收录。语音功能需要 `libonnxruntime-dev >= 1.17.0`。
+> **为什么 Ubuntu 22.04 / 24.04 没有语音？** ONNX Runtime 是较新的 ML 推理库，目前仅在 Ubuntu 26.04+ 和 Fedora rawhide 的官方源中收录。语音功能需要 `libonnxruntime-dev >= 1.17.0`。
 
 ---
 ## 🎤 语音输入功能（核心特色）

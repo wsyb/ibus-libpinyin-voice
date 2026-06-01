@@ -9,10 +9,10 @@ on:
 
 jobs:
   # ============================================================
-  # Ubuntu 22.04 LTS — 仅核心功能（无语音，onnxruntime 不可用）
+  # Ubuntu 22.04 LTS — 仅核心功能（无语音）
   # ============================================================
   build-deb-jammy:
-    name: "DEB · Ubuntu 22.04 (no voice)"
+    name: "DEB · Ubuntu 22.04"
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -21,17 +21,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            autoconf-archive \
             debhelper devscripts equivs \
             autoconf automake libtool pkg-config gnome-common gettext \
             python3 python3-gi \
-            autoconf-archive \
             libglib2.0-dev libgtk-3-dev \
             libibus-1.0-dev libpinyin-dev libsqlite3-dev \
             liblua5.3-dev lua5.3 \
             libnotify-dev libjson-glib-dev libsoup-3.0-dev \
             libopencc-dev uuid-dev
 
-      - name: Build .deb (without voice)
+      - name: Build .deb
         run: |
           ./autogen.sh NOCONFIGURE=1
           VERSION=$(grep 'ibus_major_version\|ibus_minor_version\|ibus_micro_version' configure.ac \
@@ -39,7 +39,7 @@ jobs:
           cat > debian/changelog << EOF
           ibus-libpinyin ($VERSION-1) unstable; urgency=medium
 
-            * Automated build for Ubuntu 22.04 LTS (without voice input).
+            * Automated build for Ubuntu 22.04 LTS.
 
            -- Felix Yin <ybkk1027@gmail.com>  $(date -R)
           EOF
@@ -51,10 +51,10 @@ jobs:
           path: "../*.deb"
 
   # ============================================================
-  # Ubuntu 24.04 LTS — 完整功能（含语音）
+  # Ubuntu 24.04 LTS — 仅核心功能（无语音，onnxruntime 不可用）
   # ============================================================
   build-deb-noble:
-    name: "DEB · Ubuntu 24.04 (with voice)"
+    name: "DEB · Ubuntu 24.04"
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -63,18 +63,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            autoconf-archive \
             debhelper devscripts equivs \
             autoconf automake libtool pkg-config gnome-common gettext \
             python3 python3-gi \
-            autoconf-archive \
             libglib2.0-dev libgtk-3-dev \
             libibus-1.0-dev libpinyin15-dev libsqlite3-dev \
             liblua5.4-dev lua5.4 \
             libnotify-dev libjson-glib-dev libsoup-3.0-dev \
-            libopencc-dev uuid-dev \
-            libonnxruntime-dev libpulse-dev
+            libopencc-dev uuid-dev
 
-      - name: Build .deb (with voice)
+      - name: Build .deb
         run: |
           ./autogen.sh NOCONFIGURE=1
           VERSION=$(grep 'ibus_major_version\|ibus_minor_version\|ibus_micro_version' configure.ac \
@@ -82,7 +81,7 @@ jobs:
           cat > debian/changelog << EOF
           ibus-libpinyin ($VERSION-1) unstable; urgency=medium
 
-            * Automated build for Ubuntu 24.04 LTS (with voice input).
+            * Automated build for Ubuntu 24.04 LTS.
 
            -- Felix Yin <ybkk1027@gmail.com>  $(date -R)
           EOF
@@ -97,7 +96,7 @@ jobs:
   # Fedora rawhide — 完整功能（含语音）
   # ============================================================
   build-rpm:
-    name: "RPM · Fedora (with voice)"
+    name: "RPM · Fedora"
     runs-on: ubuntu-latest
     container:
       image: fedora:rawhide
@@ -107,11 +106,12 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo dnf install -y \
+            autoconf-archive \
             gettext python3-gobject gcc-c++ gettext-devel libtool \
             pkgconfig sqlite-devel libuuid-devel \
             lua-devel python3-devel \
             json-glib-devel libsoup3-devel \
-            autoconf-archive desktop-file-utils ibus-devel libpinyin-devel libnotify-devel \
+            desktop-file-utils ibus-devel libpinyin-devel libnotify-devel \
             make gnome-common which awk rpm-build \
             onnxruntime-devel pulseaudio-libs-devel
 
