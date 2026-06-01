@@ -45,9 +45,8 @@ private:
     std::atomic<bool> m_stop_requested;
     std::string m_last_result;
 
-    std::chrono::steady_clock::time_point m_last_ctrl_press;
-    bool m_ctrl_held_after_double;
-    bool m_has_other_key_since_last_ctrl;
+    std::chrono::steady_clock::time_point m_ctrl_press_time;
+    bool m_ctrl_pending = false;
 
     std::thread m_record_thread;
     std::mutex m_result_mutex;

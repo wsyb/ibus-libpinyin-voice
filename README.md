@@ -6,18 +6,45 @@ ibus-libpinyin 为 IBus 框架提供智能拼音和注音输入法，内置离�
 
 ---
 
+## 🖥️ 平台支持
+
+### 预编译安装包
+
+GitHub Actions 自动构建以下安装包，推送 `v*` tag 时发布到 [Releases](https://github.com/libpinyin/ibus-libpinyin/releases)：
+
+| 发行版 | 包格式 | 语音输入 | 说明 |
+|--------|--------|---------|------|
+| **Ubuntu 24.04 LTS** | `.deb` | ✅ 支持 | 推荐，完整功能 |
+| **Ubuntu 22.04 LTS** | `.deb` | ❌ 不支持 | 仅有拼音输入，该版本源中无 ONNX Runtime |
+| **Fedora (rawhide)** | `.rpm` | ✅ 支持 | 滚动更新版本 |
+
+> 其他发行版（Debian、Arch、openSUSE 等）需自行从源码编译，详见下方「编译安装」章节。
+
+### 功能支持矩阵
+
+| 功能 | 依赖 | Ubuntu 24.04 | Ubuntu 22.04 | Fedora | 其他发行版 |
+|------|------|:------------:|:------------:|:------:|:----------:|
+| 拼音 / 双拼 / 注音输入 | ibus + libpinyin | ✅ | ✅ | ✅ | ✅（需自行编译） |
+| 云输入候选 | libsoup + json-glib | ✅ | ✅ | ✅ | ✅（需自行编译） |
+| Lua 扩展 | lua | ✅ | ✅ | ✅ | ✅（需自行编译） |
+| 繁简转换 (OpenCC) | libopencc | ✅ | ✅ | ✅ | ✅（需自行编译） |
+| **离线语音输入** | **ONNX Runtime** | ✅ | ❌ | ✅ | ❌（该库不在大多数发行版源中） |
+
+> **为什么 Ubuntu 22.04 没有语音？** ONNX Runtime 是较新的 ML 推理库，Ubuntu 22.04 的官方源中尚未收录。语音功能需要 `libonnxruntime-dev >= 1.17.0`。
+
+---
 ## 🎤 语音输入功能（核心特色）
 
 无需联网，无需外接服务，**离线运行**的语音识别输入。
 
-- ⚡ **毫秒级响应** — 松开 Ctrl 后即刻上屏，几乎无感知等待
+- ⚡ **毫秒级响应** — 松开右侧 Control 键后即刻上屏，几乎无感知等待
 - 🌐 **中英文混合识别** — 流畅支持中英混杂语音，如「今天天气怎么样 hello world」
 - 🔌 **完全离线** — 本地 ONNX 推理，不向任何服务器发送音频数据
 
 ### 架构概览
 
 ```
-键盘（双击 Ctrl 后按住）
+键盘（长按右侧 Control）
     ↓
 ibus-libpinyin 引擎
     ↓
@@ -29,18 +56,18 @@ PulseAudio 录音 ─→ FBank 特征提取 ─→ ONNX Runtime ─→ 文本候
 
 | 操作 | 行为 |
 |------|------|
-| **双击 Ctrl：快速点按一次，第二次按下并保持** | 提示音后开始录音（来自麦克风） |
-| **松开 Ctrl** | 录音结束 → 本地识别 → 上屏 |
-| 录音中再次操作 Ctrl | 忽略（防止重复触发） |
+| **长按键盘右侧 Control 键** | 提示音后开始录音（来自麦克风） |
+| **松开右侧 Control 键** | 录音结束 → 本地识别 → 上屏 |
+| 录音中松开再按下 Control | 忽略（防止重复触发） |
 
-> **注意**：触发方式是对 Ctrl 键双击 + 按住，不是双击后立刻启动，也不是单按。两次点按需要在 400ms 内完成，第二次按下的保持时长即为录音时长。
+> **注意**：长按键盘右侧的 Control 键即可开始录音，松开后结束录音。按住的时长即为录音时长。
 
 ### 运行流程
 
-1. **按键检测** — 引擎检测到 400ms 内第二次 Ctrl 按下时启动录音
+1. **按键检测** — 引擎检测到右侧 Control 键长按时启动录音
 2. **PulseAudio 录音** — `startRecording()` 启动 PulseAudio 异步采集，16kHz 16bit 单声道
 3. **特征提取** — `extractFeatures()` 使用 kaldi-native-fbank 计算 80 维 FBank → LFR(7,6) 拼接 → CMVN 归一化
-4. **ONNX 推理（毫秒级）** — `transcribe()` 将特征送入 Paraformer 模型（`session.Run`），输出 logits → argmax 解码 → token 合并 → 标点预测。量化模型推理通常在 **100~200ms** 内完成，松开 Ctrl 后文本即刻上屏
+4. **ONNX 推理（毫秒级）** — `transcribe()` 将特征送入 Paraformer 模型（`session.Run`），输出 logits → argmax 解码 → token 合并 → 标点预测。量化模型推理通常在 **100~200ms** 内完成，松开右侧 Control 键后文本即刻上屏
 5. **提交文本** — 识别结果回填到输入法候选，若末尾无标点则自动补「，」
 
 ### 模型文件
@@ -67,7 +94,7 @@ PulseAudio 录音 ─→ FBank 特征提取 ─→ ONNX Runtime ─→ 文本候
 # 1. 查看调试日志
 tail -f /tmp/vocotype-voice.log
 
-# 2. 用 wev 检测 Ctrl 按键事件（Wayland）
+# 2. 用 wev 检测右侧 Control 按键事件（Wayland）
 wev | grep -A3 "key:"
 
 # 3. 用 evtest 查看内核键码（需要 sudo）
@@ -86,7 +113,7 @@ VoiceInput: Session::Run took 123ms
 VoiceInput: result='今天天气怎么样 hello world，'
 ```
 
-如果 Ctrl 键事件异常，可检查键盘布局或通过 evtest 确认 Ctrl 键的 keycode。
+如果右侧 Control 键事件异常，可检查键盘布局或通过 evtest 确认 Control 键的 keycode。
 
 ### 编译依赖
 

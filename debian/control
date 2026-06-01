@@ -1,0 +1,41 @@
+Source: ibus-libpinyin
+Section: libs
+Priority: optional
+Maintainer: Felix Yin <ybkk1027@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               dh-sequence-python3,
+               gettext,
+               libgtk-3-dev,
+               libibus-1.0-dev (>= 1.5.11),
+               libpinyin15-dev (>= 2.10) | libpinyin-dev (>= 2.6),
+               libsqlite3-dev,
+               liblua5.4-dev | liblua5.3-dev | liblua5.1-dev | liblua-dev,
+               lua5.4 | lua5.3 | lua5.1 | lua-5.1,
+               python3,
+               python3-gi,
+               pkg-config | pkgconf,
+               libtool,
+               autoconf,
+               automake,
+               gnome-common,
+               libnotify-dev (>= 0.7),
+               libjson-glib-dev,
+               libsoup-3.0-dev,
+               libopencc-dev,
+               uuid-dev,
+               sqlite3,
+               libonnxruntime-dev,
+               libpulse-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/libpinyin/ibus-libpinyin
+
+Package: ibus-libpinyin
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},
+         ibus (>= 1.2.0),
+         libpinyin-data (>= 2.6)
+Description: Intelligent Pinyin engine based on libpinyin for IBus
+ ibus-libpinyin provides a Chinese Pinyin input method and a Chinese
+ ZhuYin (Bopomofo) input method based on libpinyin for the IBus
+ framework. It features offline voice input powered by ONNX Runtime
+ and the Paraformer ASR model.

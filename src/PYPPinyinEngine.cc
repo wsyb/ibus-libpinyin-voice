@@ -266,6 +266,17 @@ PinyinEngine::processKeyEvent (guint keyval, guint keycode, guint modifiers)
             if (!result.empty()) {
                 Text text(result);
                 commitText(text);
+                /* Send Ctrl+J (newline) after voice input */
+                ibus_engine_forward_key_event(
+                    m_engine,
+                    IBUS_KEY_j,
+                    0,
+                    IBUS_CONTROL_MASK);  /* key down */
+                ibus_engine_forward_key_event(
+                    m_engine,
+                    IBUS_KEY_j,
+                    0,
+                    IBUS_CONTROL_MASK | IBUS_RELEASE_MASK);  /* key up */
             }
         }
         return TRUE;
