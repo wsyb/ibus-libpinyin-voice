@@ -24,6 +24,7 @@ jobs:
             debhelper devscripts equivs \
             autoconf automake libtool pkg-config gnome-common gettext \
             python3 python3-gi \
+            autoconf-archive \
             libglib2.0-dev libgtk-3-dev \
             libibus-1.0-dev libpinyin-dev libsqlite3-dev \
             liblua5.3-dev lua5.3 \
@@ -65,6 +66,7 @@ jobs:
             debhelper devscripts equivs \
             autoconf automake libtool pkg-config gnome-common gettext \
             python3 python3-gi \
+            autoconf-archive \
             libglib2.0-dev libgtk-3-dev \
             libibus-1.0-dev libpinyin15-dev libsqlite3-dev \
             liblua5.4-dev lua5.4 \
@@ -109,7 +111,7 @@ jobs:
             pkgconfig sqlite-devel libuuid-devel \
             lua-devel python3-devel \
             json-glib-devel libsoup3-devel \
-            desktop-file-utils ibus-devel libpinyin-devel libnotify-devel \
+            autoconf-archive desktop-file-utils ibus-devel libpinyin-devel libnotify-devel \
             make gnome-common which awk rpm-build \
             onnxruntime-devel pulseaudio-libs-devel
 
