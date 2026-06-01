@@ -9,9 +9,24 @@ ibus-libpinyin 为 IBus 框架提供智能拼音和注音输入法，内置离�
 
 无需联网，无需外接服务，**离线运行**的语音识别输入。
 
-- ⚡ **毫秒级响应** — 松开右侧 Control 键后即刻上屏，几乎无感知等待
+- ⚡ **快如闪电** — 松开右侧 Control 键后文字即刻上屏，推理通常在 **20~80ms** 内完成，比其他 Linux 语音输入方案（Whisper、Vosk 等）快一个数量级
 - 🌐 **中英文混合识别** — 流畅支持中英混杂语音，如「今天天气怎么样 hello world」
+- 💻 **不需要 GPU** — 纯 CPU 运行，使用量化 ONNX 模型，普通笔记本也能跑
 - 🔌 **完全离线** — 本地 ONNX 推理，不向任何服务器发送音频数据
+
+### 与其他 Linux 语音输入方案的对比
+
+| 特性 | ibus-libpinyin (本方案) | Whisper (本地) | Vosk |
+|------|------------------------|----------------|------|
+| 推理速度 | **20~80ms** | 1~10s | 200~500ms |
+| 是否需要 GPU | **不需要，纯 CPU** | 推荐 GPU | 不需要 |
+| 中英文混合 | ✅ 原生支持 | ✅ 支持 | ⚠️ 需要额外模型 |
+| 实时显示 | ❌ 说完后出字 | ❌ | ✅ |
+| 标点符号 | ❌ 暂不支持自动标点 | ✅ | ❌ |
+| 集成方式 | IBus 输入法引擎 | 独立程序/管道 | 独立程序 |
+| 离线运行 | ✅ | ✅ | ✅ |
+
+> **核心优势**：在纯 CPU 环境下，推理速度比 Whisper 快 **10~50 倍**，比 Vosk 快 **3~10 倍**，同时保持中英文混合识别能力。
 
 ### 架构概览
 
@@ -34,29 +49,60 @@ PulseAudio 录音 ─→ FBank 特征提取 ─→ ONNX Runtime ─→ 文本候
 
 > **注意**：长按键盘右侧的 Control 键即可开始录音，松开后结束录音。按住的时长即为录音时长。
 
+### 已知限制
+
+- **不支持实时显示** — 不是边说边出字，而是松开右侧 Control 键后一次性输出结果
+- **不支持标点符号自动识别** — 目前输出标点全部都是逗号（，），不会自动识别句号、问号等
+- **需要手动下载模型** — 语音模型需从 ModelScope 下载（约 238MB），首次使用需手动放置
+
 ### 运行流程
 
 1. **按键检测** — 引擎检测到右侧 Control 键长按时启动录音
 2. **PulseAudio 录音** — `startRecording()` 启动 PulseAudio 异步采集，16kHz 16bit 单声道
 3. **特征提取** — `extractFeatures()` 使用 kaldi-native-fbank 计算 80 维 FBank → LFR(7,6) 拼接 → CMVN 归一化
-4. **ONNX 推理（毫秒级）** — `transcribe()` 将特征送入 Paraformer 模型（`session.Run`），输出 logits → argmax 解码 → token 合并 → 标点预测。量化模型推理通常在 **100~200ms** 内完成，松开右侧 Control 键后文本即刻上屏
-5. **提交文本** — 识别结果回填到输入法候选，若末尾无标点则自动补「，」
+4. **ONNX 推理（极快）** — `transcribe()` 将特征送入 Paraformer 量化模型（`session.Run`），输出 logits → argmax 解码 → token 合并。量化模型推理通常在 **20~80ms** 内完成，松开右侧 Control 键后文本即刻上屏
+5. **提交文本** — 识别结果直接上屏，若末尾无标点则自动补「，」
 
 ### 模型文件
 
-语音模型需从 ModelScope 下载，放置到：
+语音模型和标点模型需从 ModelScope 下载，`install.sh` 会自动下载。
+
+**ASR 语音识别模型**（Paraformer，必需）：
 
 ```
 ~/.cache/modelscope/hub/models/iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-onnx/
 ```
 
-所需文件：
+| 文件 | 说明 |
+|------|------|
+| `model_quant.onnx` | Paraformer 量化模型（约 228MB） |
+| `am.mvn` | CMVN 均值和方差文件 |
+| `tokens.json` | 词汇表（8404 字符） |
+
+**SenseVoice 模型**（可选，更好的中英混合识别）：
+
+```
+~/.cache/modelscope/hub/models/iic/SenseVoiceSmall-onnx/
+```
 
 | 文件 | 说明 |
 |------|------|
-| `model_quant.onnx` / `model.int8.onnx` | Paraformer 量化模型（约 70MB） |
+| `model_quant.onnx` | SenseVoice 量化模型（约 231MB） |
 | `am.mvn` | CMVN 均值和方差文件 |
-| `tokens.json` / `tokens.txt` | 词汇表（8404 字符） |
+| `tokens.json` | 词汇表（25055 字符） |
+
+**标点符号模型**（可选，自动添加标点）：
+
+```
+~/.cache/modelscope/hub/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx/
+```
+
+| 文件 | 说明 |
+|------|------|
+| `model_quant.onnx` | 标点模型量化版（约 270MB） |
+| `tokens.json` | 词汇表 |
+
+> **注意**：如果 SenseVoice 或标点模型不存在，引擎会自动回退到 Paraformer + 默认逗号模式。
 
 ### 诊断方法
 
