@@ -35,6 +35,7 @@ private:
     void startRecording();
     void stopRecording();
     std::string transcribe(const std::vector<int16_t>& samples);
+    std::string transcribeSenseVoice(const std::vector<float>& features, int num_frames);
     void recordThread();
 
     static void streamReadCb(pa_stream* s, size_t nbytes, void* userdata);
@@ -60,6 +61,11 @@ private:
     bool m_model_loaded;
     std::vector<std::string> m_tokens;
 
+    /* SenseVoice model */
+    OrtSession* m_sv_session;
+    bool m_sv_model_loaded;
+    std::vector<std::string> m_sv_tokens;
+
     /* Punctuation model */
     OrtSession* m_punc_session;
     bool m_punc_model_loaded;
@@ -72,6 +78,7 @@ private:
 
     std::string m_model_path;
     std::string m_cmvn_path;
+    std::string m_sv_model_path;
     std::string m_punc_model_path;
 
     std::vector<std::string> punctuate(const std::vector<int>& token_ids);

@@ -97,6 +97,16 @@ static std::string findFileInDir(const std::string& dir,
     return "";
 }
 
+static std::string getSenseVoiceDir() {
+    const char* home = g_get_home_dir();
+    std::string base = std::string(home) +
+        "/.cache/modelscope/hub/models/iic/"
+        "SenseVoiceSmall-onnx";
+    if (g_file_test(base.c_str(), G_FILE_TEST_IS_DIR))
+        return base;
+    return "";
+}
+
 static std::string getPuncDir() {
     const char* home = g_get_home_dir();
     std::string base = std::string(home) +
@@ -158,6 +168,8 @@ VoiceInput::VoiceInput()
       m_env(nullptr),
       m_session(nullptr),
       m_model_loaded(false),
+      m_sv_session(nullptr),
+      m_sv_model_loaded(false),
       m_punc_session(nullptr),
       m_punc_model_loaded(false)
 {
@@ -201,6 +213,30 @@ VoiceInput::VoiceInput()
         }
     }
     vlog("VoiceInput: tokens loaded, count=%d", (int)m_tokens.size());
+
+    /* Load SenseVoice model */
+    std::string sv_dir = getSenseVoiceDir();
+    if (!sv_dir.empty()) {
+        m_sv_model_path = findFileInDir(sv_dir, {"model_quant.onnx", "model.int8.onnx"});
+        if (!m_sv_model_path.empty()) {
+            std::string sv_tokens_path = findFileInDir(sv_dir, {"tokens.json", "tokens.txt"});
+            if (!sv_tokens_path.empty() && sv_tokens_path.find(".json") != std::string::npos) {
+                std::ifstream f(sv_tokens_path);
+                if (f.is_open()) {
+                    std::string content((std::istreambuf_iterator<char>(f)),
+                                         std::istreambuf_iterator<char>());
+                    size_t pos = 0;
+                    while ((pos = content.find('"', pos)) != std::string::npos) {
+                        size_t end = content.find('"', pos + 1);
+                        if (end == std::string::npos) break;
+                        m_sv_tokens.push_back(content.substr(pos + 1, end - pos - 1));
+                        pos = end + 1;
+                    }
+                }
+            }
+            vlog("VoiceInput: SenseVoice tokens loaded, count=%d", (int)m_sv_tokens.size());
+        }
+    }
 
     /* Load punctuation model */
     std::string punc_dir = getPuncDir();
@@ -306,6 +342,26 @@ bool VoiceInput::initOnnxRuntime() {
 
     m_model_loaded = true;
     vlog("VoiceInput: ONNX model loaded from %s", m_model_path.c_str());
+
+    /* Create SenseVoice session */
+    if (!m_sv_model_path.empty()) {
+        OrtSessionOptions* sv_opts = nullptr;
+        st = m_api->CreateSessionOptions(&sv_opts);
+        if (!st) {
+            m_api->SetInterOpNumThreads(sv_opts, 4);
+            m_api->SetIntraOpNumThreads(sv_opts, 4);
+            st = m_api->CreateSession(m_env, m_sv_model_path.c_str(), sv_opts, &m_sv_session);
+            if (st) {
+                vlog("VoiceInput: SenseVoice session failed: %s", m_api->GetErrorMessage(st));
+                m_api->ReleaseStatus(st);
+                m_sv_session = nullptr;
+            } else {
+                m_sv_model_loaded = true;
+                vlog("VoiceInput: SenseVoice model loaded from %s", m_sv_model_path.c_str());
+            }
+            m_api->ReleaseSessionOptions(sv_opts);
+        }
+    }
 
     /* Create punctuation session */
     if (!m_punc_model_path.empty()) {
@@ -424,22 +480,18 @@ void VoiceInput::stopRecording() {
         vlog("VoiceInput: transcribe=%lldms, total=%lldms", (long long)transcribe_ms, (long long)total_ms);
         vlog("VoiceInput: result='%s'", result.c_str());
 
-        /* Apply punctuation if model is available */
+        /* Apply punctuation model if available and text has Chinese */
         if (m_punc_model_loaded && !result.empty()) {
             std::vector<uint32_t> codepoints = decodeUtf8(result);
-
-            /* Check if result has any Chinese characters */
             bool has_chinese = false;
             for (uint32_t cp : codepoints) {
-                if ((cp >= 0x4E00 && cp <= 0x9FFF) ||   /* CJK Unified */
-                    (cp >= 0x3400 && cp <= 0x4DBF) ||   /* CJK Extension A */
-                    (cp >= 0xF900 && cp <= 0xFAFF)) {   /* CJK Compatibility */
+                if ((cp >= 0x4E00 && cp <= 0x9FFF) ||
+                    (cp >= 0x3400 && cp <= 0x4DBF) ||
+                    (cp >= 0xF900 && cp <= 0xFAFF)) {
                     has_chinese = true;
                     break;
                 }
             }
-
-            /* Only apply punctuation to Chinese text */
             if (has_chinese) {
                 std::vector<int> char_ids;
                 for (uint32_t cp : codepoints) {
@@ -642,6 +694,146 @@ std::vector<std::string> VoiceInput::punctuate(const std::vector<int>& token_ids
     if (outputs[0]) m_api->ReleaseValue(outputs[0]);
 
     return result_per_pos;
+}
+
+std::string VoiceInput::transcribeSenseVoice(const std::vector<float>& features,
+                                              int num_frames) {
+    if (!m_sv_model_loaded || !m_api || num_frames == 0)
+        return "";
+
+    auto t0 = std::chrono::steady_clock::now();
+
+    int feat_dim = (int)m_cmvn.means.size();
+    int64_t input_shape[3] = {1, num_frames, feat_dim};
+    int64_t length_shape[1] = {1};
+    int32_t speech_length = num_frames;
+
+    /* SenseVoice needs language and textnorm inputs */
+    int32_t language = 3;  /* Chinese */
+    int32_t textnorm = 1;  /* with ITN */
+    int64_t lang_shape[1] = {1};
+    int64_t tn_shape[1] = {1};
+
+    OrtMemoryInfo* mem_info = nullptr;
+    CHECK_ORT(m_api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &mem_info));
+
+    OrtValue* speech_tensor = nullptr;
+    CHECK_ORT(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, (void*)features.data(), features.size() * sizeof(float),
+        input_shape, 3,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &speech_tensor));
+
+    OrtValue* length_tensor = nullptr;
+    CHECK_ORT(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, &speech_length, sizeof(int32_t),
+        length_shape, 1,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &length_tensor));
+
+    OrtValue* lang_tensor = nullptr;
+    CHECK_ORT(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, &language, sizeof(int32_t),
+        lang_shape, 1,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &lang_tensor));
+
+    OrtValue* tn_tensor = nullptr;
+    CHECK_ORT(m_api->CreateTensorWithDataAsOrtValue(
+        mem_info, &textnorm, sizeof(int32_t),
+        tn_shape, 1,
+        ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, &tn_tensor));
+
+    m_api->ReleaseMemoryInfo(mem_info);
+
+    const char* input_names[] = {"speech", "speech_lengths", "language", "textnorm"};
+    const char* output_names[] = {"ctc_logits", "encoder_out_lens"};
+    OrtValue* inputs[] = {speech_tensor, length_tensor, lang_tensor, tn_tensor};
+    OrtValue* outputs[2] = {nullptr, nullptr};
+
+    vlog("VoiceInput: calling SenseVoice Session::Run...");
+    OrtStatus* st = m_api->Run(m_sv_session, nullptr,
+        input_names, inputs, 4,
+        output_names, 2, outputs);
+    auto t1 = std::chrono::steady_clock::now();
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+    vlog("VoiceInput: SenseVoice Session::Run took %lldms", (long long)ms);
+    m_api->ReleaseValue(speech_tensor);
+    m_api->ReleaseValue(length_tensor);
+    m_api->ReleaseValue(lang_tensor);
+    m_api->ReleaseValue(tn_tensor);
+
+    if (st) {
+        vlog("VoiceInput: SenseVoice Run failed: %s", m_api->GetErrorMessage(st));
+        m_api->ReleaseStatus(st);
+        return "";
+    }
+
+    OrtTensorTypeAndShapeInfo* type_info = nullptr;
+    CHECK_ORT(m_api->GetTensorTypeAndShape(outputs[0], &type_info));
+    int64_t dims[4];
+    size_t dims_count = 4;
+    CHECK_ORT(m_api->GetDimensions(type_info, dims, dims_count));
+    m_api->ReleaseTensorTypeAndShapeInfo(type_info);
+
+    int seq_len = (int)dims[1];
+    int vocab = (int)dims[2];
+
+    float* logit_data = nullptr;
+    CHECK_ORT(m_api->GetTensorMutableData(outputs[0], (void**)&logit_data));
+
+    /* CTC decoding: argmax + collapse repeats + remove blanks */
+    std::vector<int> token_ids;
+    int prev_id = -1;
+    for (int t = 0; t < seq_len; t++) {
+        int best_id = 0;
+        float best_score = logit_data[t * vocab];
+        for (int v = 1; v < vocab; v++) {
+            if (logit_data[t * vocab + v] > best_score) {
+                best_score = logit_data[t * vocab + v];
+                best_id = v;
+            }
+        }
+        if (best_id == 0) { prev_id = 0; continue; }  /* blank */
+        if (best_id == prev_id) continue;  /* collapse repeat */
+        prev_id = best_id;
+        token_ids.push_back(best_id);
+    }
+
+    /* SenseVoice SentencePiece decoding:
+     * - Skip special tokens <|...|>
+     * - ▁ prefix = word boundary (add space before, strip ▁)
+     * - No ▁ = continuation (concatenate directly)
+     * - Punctuation tokens kept as-is
+     */
+    std::string result;
+    for (size_t i = 0; i < token_ids.size(); i++) {
+        int id = token_ids[i];
+        if (id < 0 || id >= (int)m_sv_tokens.size()) continue;
+        const std::string& tok = m_sv_tokens[id];
+
+        /* Skip special tokens: <|...|> */
+        if (tok.size() >= 2 && tok[0] == '<' && tok[1] == '|') continue;
+        if (tok == "<s>" || tok == "</s>" || tok == "<unk>" || tok == "<blank>") continue;
+
+        /* SentencePiece: ▁ means word boundary (space before) */
+        if (tok.size() > 0 && tok[0] == 0xE2 && tok.size() > 2 &&
+            tok[1] == 0x96 && tok[2] == 0x81) {
+            /* This is ▁ (U+2581) - word boundary marker */
+            std::string word = tok.substr(3);  /* strip ▁ */
+            if (!word.empty()) {
+                if (!result.empty()) result += " ";
+                result += word;
+            }
+        } else {
+            /* Continuation token - concatenate directly */
+            result += tok;
+        }
+    }
+
+    vlog("VoiceInput: SenseVoice decoded %d tokens, result='%s'", (int)token_ids.size(), result.c_str());
+
+    if (outputs[0]) m_api->ReleaseValue(outputs[0]);
+    if (outputs[1]) m_api->ReleaseValue(outputs[1]);
+
+    return result;
 }
 
 std::string VoiceInput::transcribe(const std::vector<int16_t>& samples) {
