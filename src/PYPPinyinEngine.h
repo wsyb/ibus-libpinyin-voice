@@ -87,7 +87,7 @@ private:
     EditorPtr m_editors[MODE_LAST];
     EditorPtr m_fallback_editor;
 
-    std::unique_ptr<class VoiceInput> m_voice_input;
+    class VoiceInput *m_voice_input;
 
 #ifdef IBUS_BUILD_LUA_EXTENSION
     Pointer<IBusEnginePlugin> m_lua_plugin;

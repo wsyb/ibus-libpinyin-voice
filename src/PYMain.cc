@@ -38,6 +38,7 @@
 #include "PYTableDatabase.h"
 #endif
 #include "PYXMLUtil.h"
+#include "PYVoiceInput.h"
 #ifdef ENABLE_LIBNOTIFY
 #include <libnotify/notify.h>
 #endif
@@ -99,6 +100,7 @@ start_component (void)
     }
 
     LibPinyinBackEnd::init ();
+    VoiceInput::init ();
 
     PinyinConfig::init ();
     BopomofoConfig::init ();
@@ -166,6 +168,7 @@ start_component (void)
 static void
 sigterm_cb (int sig)
 {
+    VoiceInput::finalize ();
     LibPinyinBackEnd::finalize ();
 
 #ifdef ENABLE_LIBNOTIFY
@@ -178,6 +181,7 @@ sigterm_cb (int sig)
 static void
 atexit_cb (void)
 {
+    VoiceInput::finalize ();
     LibPinyinBackEnd::finalize ();
 
 #ifdef ENABLE_LIBNOTIFY

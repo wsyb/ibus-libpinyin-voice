@@ -13,6 +13,20 @@
 
 using namespace PY;
 
+std::unique_ptr<VoiceInput> VoiceInput::m_instance;
+
+void VoiceInput::init(void) {
+    if (!m_instance) {
+        m_instance.reset(new VoiceInput());
+    }
+}
+
+void VoiceInput::finalize(void) {
+    if (m_instance) {
+        m_instance.reset();
+    }
+}
+
 static std::string g_log_path = "/tmp/vocotype-voice.log";
 
 #include <cmath>
@@ -390,6 +404,14 @@ void VoiceInput::shutdownOnnxRuntime() {
     if (m_session) {
         m_api->ReleaseSession(m_session);
         m_session = nullptr;
+    }
+    if (m_punc_session) {
+        m_api->ReleaseSession(m_punc_session);
+        m_punc_session = nullptr;
+    }
+    if (m_sv_session) {
+        m_api->ReleaseSession(m_sv_session);
+        m_sv_session = nullptr;
     }
     if (m_env) {
         m_api->ReleaseEnv(m_env);

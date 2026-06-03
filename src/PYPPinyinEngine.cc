@@ -125,7 +125,7 @@ PinyinEngine::PinyinEngine (IBusEngine *engine)
 
     connectEditorSignals (m_fallback_editor);
 
-    m_voice_input.reset(new VoiceInput());
+    m_voice_input = &VoiceInput::instance();
 }
 
 /* destructor */

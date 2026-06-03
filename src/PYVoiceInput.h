@@ -22,14 +22,18 @@ namespace PY {
 
 class VoiceInput {
 public:
-    VoiceInput();
     ~VoiceInput();
 
     gboolean handleKeyEvent(guint keyval, guint keycode, guint modifiers);
     gboolean isRecording() const { return m_recording.load(); }
     std::string getLastResult();
 
+    static VoiceInput & instance(void) { return *m_instance; }
+    static void init(void);
+    static void finalize(void);
+
 private:
+    VoiceInput();
     bool initOnnxRuntime();
     void shutdownOnnxRuntime();
     void startRecording();
@@ -82,6 +86,8 @@ private:
     std::string m_punc_model_path;
 
     std::vector<std::string> punctuate(const std::vector<int>& token_ids);
+
+    static std::unique_ptr<VoiceInput> m_instance;
 };
 
 }
