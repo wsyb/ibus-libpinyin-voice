@@ -24,7 +24,7 @@ PUNC_MODEL_DIR="$HOME/.cache/modelscope/hub/models/iic/punc_ct-transformer_zh-cn
 PUNC_MODEL_BASE_URL="https://www.modelscope.cn/models/iic/punc_ct-transformer_zh-cn-common-vocab272727-onnx/resolve/master"
 PUNC_MODEL_FILES=("model_quant.onnx" "tokens.json")
 
-BUILD_DEPS="build-essential autoconf automake libtool pkg-config"
+BUILD_DEPS="build-essential autoconf automake libtool pkg-config gettext"
 RUNTIME_DEPS="libonnxruntime1.23 libpulse0 libibus-1.0-0 libsqlite3-0 libpinyin15 libopencc1.1 libnotify4"
 BUILD_LIBS="libibus-1.0-dev libsqlite3-dev libpinyin-dev libopencc-dev libpulse-dev libonnxruntime-dev libnotify-dev"
 OPTIONAL_DEPS="libboost-all-dev"
@@ -40,8 +40,18 @@ echo ""
 
 log_info "[1/8] Installing build dependencies..."
 apt-get update -qq
-apt-get install -y -qq $BUILD_DEPS $BUILD_LIBS > /dev/null 2>&1
+apt-get install -y -qq $BUILD_DEPS $BUILD_LIBS 2>&1 | tail -3
 log_info "Build dependencies installed."
+
+# Fix: Ubuntu packages libonnxruntime as libonnxruntime.pc
+# but configure.ac expects onnxruntime.pc
+if ! pkg-config --exists onnxruntime 2>/dev/null; then
+    if pkg-config --exists libonnxruntime 2>/dev/null; then
+        PKG_DIR=$(pkg-config --variable=pcfiledir libonnxruntime)
+        ln -sf "$PKG_DIR/libonnxruntime.pc" "$PKG_DIR/onnxruntime.pc"
+        log_info "Created onnxruntime.pc symlink (Ubuntu packaging workaround)"
+    fi
+fi
 
 log_info "[2/8] Initializing submodules..."
 cd "$PROJECT_DIR"
@@ -63,10 +73,10 @@ if [ -f "configure" ]; then
     make clean > /dev/null 2>&1 || true
     find . -name "*.o" -delete 2>/dev/null || true
 else
-    autoreconf -fi > /dev/null 2>&1
+    autoreconf -fi 2>&1 || { log_error "autoreconf failed"; exit 1; }
 fi
-./configure --enable-onnxruntime > /dev/null 2>&1
-make -j"$(nproc)" > /dev/null 2>&1
+./configure --enable-onnxruntime 2>&1 || { log_error "configure failed"; exit 1; }
+make -j"$(nproc)" 2>&1 || { log_error "make failed"; exit 1; }
 log_info "Build successful."
 
 log_info "[4/8] Stopping ibus processes..."
