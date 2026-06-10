@@ -36,7 +36,7 @@ private:
     VoiceInput();
     bool initOnnxRuntime();
     void shutdownOnnxRuntime();
-    void startRecording();
+    bool startRecording();
     void stopRecording();
     std::string transcribe(const std::vector<int16_t>& samples,
                            std::vector<bool>& space_before);

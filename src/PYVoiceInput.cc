@@ -377,9 +377,9 @@ gboolean VoiceInput::handleKeyEvent(guint keyval, guint keycode, guint modifiers
     if (keyval != IBUS_KEY_Control_R)
         return FALSE;
 
-    if (pressed && !m_recording.load()) {
-        playBeep("/usr/share/sounds/freedesktop/stereo/complete.oga");
-        startRecording();
+    if (pressed) {
+        if (startRecording())
+            playBeep("/usr/share/sounds/freedesktop/stereo/complete.oga");
         return TRUE;
     }
 
@@ -391,10 +391,12 @@ gboolean VoiceInput::handleKeyEvent(guint keyval, guint keycode, guint modifiers
     return FALSE;
 }
 
-void VoiceInput::startRecording() {
-    if (m_recording.load() || !m_model_loaded) return;
+bool VoiceInput::startRecording() {
+    bool expected = false;
+    if (!m_model_loaded ||
+        !m_recording.compare_exchange_strong(expected, true))
+        return false;
 
-    m_recording.store(true);
     m_stop_requested.store(false);
     m_record_buffer.clear();
 
@@ -405,6 +407,7 @@ void VoiceInput::startRecording() {
 
     vlog("VoiceInput: recording started");
     m_record_thread = std::thread(&VoiceInput::recordThread, this);
+    return true;
 }
 
 void VoiceInput::stopRecording() {
@@ -420,10 +423,10 @@ void VoiceInput::stopRecording() {
 
     m_recording.store(false);
 
-    /* Skip transcription if audio is too short (less than 1 second).
+    /* Skip transcription if audio is too short (less than 500 ms).
      * Short recordings are mostly silence/noise and cause hallucination
      * in the ASR model (e.g. generating "对的对的" from empty audio). */
-    constexpr size_t MIN_SAMPLES = 16000;  // 1 second at 16kHz
+    constexpr size_t MIN_SAMPLES = SAMPLE_RATE / 2;  // 500 ms at 16kHz
     if (!m_record_buffer.empty() && m_record_buffer.size() < MIN_SAMPLES) {
         vlog("VoiceInput: audio too short (%d samples, need %zu), skipping",
              (int)m_record_buffer.size(), MIN_SAMPLES);

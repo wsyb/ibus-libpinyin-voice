@@ -171,9 +171,25 @@ ibus-libpinyin 内置多种输入模式，通过输入法属性切换：
 
 ---
 
-## 🔧 编译安装
+## 🔧 安装
 
-### 依赖
+### 一键安装（推荐 Ubuntu / Debian 用户）
+
+目前项目主要通过安装脚本提供语音增强版的快速安装流程。该脚本面向 Ubuntu / Debian 系发行版，会自动安装编译依赖、编译启用语音功能的引擎、下载 ASR 和标点模型、配置 IBus 并重启输入法服务。
+
+```bash
+git clone https://github.com/wsyb/ibus-libpinyin-voice.git
+cd ibus-libpinyin-voice
+sudo ./install.sh
+```
+
+安装完成后，长按右侧 Control 键即可开始语音输入。
+
+> 注意：`install.sh` 当前使用 `apt-get`、`update-alternatives` 和 `/usr/libexec/ibus-engine-libpinyin` 路径，主要验证目标是 Ubuntu / Debian 系发行版。Fedora、Arch Linux、openSUSE 等发行版建议先使用下方的手动编译方式，或根据本发行版包名安装依赖后再编译安装。
+
+### 手动编译安装
+
+#### 依赖
 
 ```bash
 sudo apt install ibus libpinyin-dev libpinyin-utils libsqlite3-dev \
@@ -184,11 +200,11 @@ sudo apt install ibus libpinyin-dev libpinyin-utils libsqlite3-dev \
 sudo apt install libonnxruntime-dev libpulse-dev
 ```
 
-### 编译
+#### 编译
 
 ```bash
-git clone https://github.com/libpinyin/ibus-libpinyin.git
-cd ibus-libpinyin
+git clone https://github.com/wsyb/ibus-libpinyin-voice.git
+cd ibus-libpinyin-voice
 ./autogen.sh
 
 # 不含语音功能
@@ -216,30 +232,42 @@ ibus restart
 
 ### 卸载
 
-编译安装后，使用以下命令卸载：
+如果通过 `install.sh` 安装，推荐使用配套卸载脚本恢复原版输入法：
 
 ```bash
-cd ibus-libpinyin
+cd ibus-libpinyin-voice
+sudo ./uninstall.sh
+```
+
+卸载脚本会移除语音增强版二进制、删除 `update-alternatives` 项，并尽量恢复安装前备份的原版 `ibus-engine-libpinyin`。执行时会询问是否删除本地 ASR 模型文件。
+
+如果通过 `make install` 手动编译安装，使用以下命令卸载：
+
+```bash
+cd ibus-libpinyin-voice
 sudo make uninstall
 ibus restart
 ```
 
-> 如果 `make uninstall` 不可用（例如 `Makefile` 已丢失），可手动删除安装的文件。安装文件通常位于 `/usr/lib/ibus-engine-libpinyin`、`/usr/lib/ibus-setup-libpinyin`、`/usr/share/ibus-libpinyin/` 和 `/usr/share/ibus/component/` 下。
+> 如果 `make uninstall` 不可用（例如 `Makefile` 已丢失），可手动删除安装的文件。安装文件通常位于 `/usr/libexec/ibus-engine-libpinyin`、`/usr/libexec/ibus-setup-libpinyin`、`/usr/share/ibus-libpinyin/` 和 `/usr/share/ibus/component/` 下。
 
 ### 恢复原版 ibus-libpinyin
 
-如果系统原本通过包管理器安装了 ibus-libpinyin，手动编译安装后想恢复原版：
+如果系统原本通过包管理器安装了 ibus-libpinyin，安装语音增强版后想恢复原版：
 
 ```bash
-# 1. 卸载手动编译的版本
-sudo make uninstall  # 在编译目录中执行
+# 1. 如果使用 install.sh 安装，优先运行卸载脚本
+sudo ./uninstall.sh
 
-# 2. 重新安装发行版的原版包
+# 2. 如果使用 make install 手动编译安装，在编译目录中执行
+sudo make uninstall
+
+# 3. 重新安装发行版的原版包
 sudo apt install --reinstall ibus-libpinyin   # Ubuntu / Debian
 sudo dnf reinstall ibus-libpinyin              # Fedora
 sudo pacman -S ibus-libpinyin                  # Arch Linux
 
-# 3. 重启 IBus
+# 4. 重启 IBus
 ibus restart
 ```
 
