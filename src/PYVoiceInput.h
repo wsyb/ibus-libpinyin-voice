@@ -75,6 +75,9 @@ private:
     bool m_punc_model_loaded;
     std::vector<std::string> m_punc_tokens_str;
 
+    /* Word boundary info from last transcribe() */
+    std::vector<bool> m_space_before;
+
     std::vector<int16_t> m_record_buffer;
     std::mutex m_buffer_mutex;
 

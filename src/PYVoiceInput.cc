@@ -470,6 +470,7 @@ void VoiceInput::startRecording() {
         std::lock_guard<std::mutex> lock(m_result_mutex);
         m_last_result.clear();
     }
+    m_space_before.clear();
 
     vlog("VoiceInput: recording started");
     m_record_thread = std::thread(&VoiceInput::recordThread, this);
@@ -487,6 +488,17 @@ void VoiceInput::stopRecording() {
     vlog("VoiceInput: recording stopped, %d samples, join=%lldms", (int)m_record_buffer.size(), (long long)join_ms);
 
     m_recording.store(false);
+
+    /* Skip transcription if audio is too short (less than 1 second).
+     * Short recordings are mostly silence/noise and cause hallucination
+     * in the ASR model (e.g. generating "对的对的" from empty audio). */
+    constexpr size_t MIN_SAMPLES = 16000;  // 1 second at 16kHz
+    if (!m_record_buffer.empty() && m_record_buffer.size() < MIN_SAMPLES) {
+        vlog("VoiceInput: audio too short (%d samples, need %zu), skipping",
+             (int)m_record_buffer.size(), MIN_SAMPLES);
+        m_record_buffer.clear();
+        return;
+    }
 
     if (!m_record_buffer.empty()) {
         auto samples = m_record_buffer;
@@ -529,17 +541,33 @@ void VoiceInput::stopRecording() {
                 if (!punc_result.empty()) {
                     std::string punctuated;
                     for (size_t i = 0; i < codepoints.size(); i++) {
+                        /* Insert space before this character if marked */
+                        if (i < m_space_before.size() && m_space_before[i])
+                            punctuated += ' ';
                         punctuated += codepointToUtf8(codepoints[i]);
                         if (i < punc_result.size() && !punc_result[i].empty()) {
                             punctuated += punc_result[i];
                         }
                     }
                     result = punctuated;
+                    m_space_before.clear();  /* already applied */
                     vlog("VoiceInput: after punctuate: '%s'", result.c_str());
                 }
             }
         }
 
+        /* Insert word boundary spaces if punctuation model wasn't applied */
+        if (!m_space_before.empty()) {
+            std::vector<uint32_t> codepoints = decodeUtf8(result);
+            std::string with_spaces;
+            for (size_t i = 0; i < codepoints.size(); i++) {
+                if (i < m_space_before.size() && m_space_before[i])
+                    with_spaces += ' ';
+                with_spaces += codepointToUtf8(codepoints[i]);
+            }
+            result = with_spaces;
+            m_space_before.clear();
+        }
 
         {
             std::lock_guard<std::mutex> lock(m_result_mutex);
@@ -948,17 +976,48 @@ std::string VoiceInput::transcribe(const std::vector<int16_t>& samples) {
     }
 
     std::string result;
+    std::vector<bool> space_before;  /* per-character: insert space before this char */
+    bool prev_continues = false;
+    bool prev_is_cjk = false;
     for (int id : token_ids) {
         if (id > 0 && id < (int)m_tokens.size()) {
             std::string tok = m_tokens[id];
             if (tok == "<s>" || tok == "</s>" || tok == "<blank>" || tok == "<unk>")
                 continue;
-            if (tok.size() >= 2 && tok[tok.size() - 2] == '@' && tok[tok.size() - 1] == '@') {
+
+            bool is_continuation = (tok.size() >= 2 &&
+                tok[tok.size() - 2] == '@' && tok[tok.size() - 1] == '@');
+            if (is_continuation)
                 tok = tok.substr(0, tok.size() - 2);
+
+            bool is_cjk = (tok.size() >= 3 &&
+                (unsigned char)tok[0] >= 0xE4 && (unsigned char)tok[0] <= 0xE9);
+            bool is_punct = (tok.size() <= 3 && !is_cjk &&
+                std::all_of(tok.begin(), tok.end(), [](char c) {
+                    return !std::isalnum((unsigned char)c);
+                }));
+
+            /* Mark word boundary: need space before this token if:
+             * - not a continuation of previous token
+             * - neither side is CJK
+             * - current token is not punctuation */
+            bool need_space = !result.empty() && !prev_continues &&
+                              !prev_is_cjk && !is_cjk && !is_punct;
+
+            /* Encode token as UTF-8 codepoints, mark first char with space */
+            std::vector<uint32_t> cps = decodeUtf8(tok);
+            for (size_t i = 0; i < cps.size(); i++) {
+                space_before.push_back(need_space && i == 0);
             }
             result += tok;
+
+            prev_continues = is_continuation;
+            prev_is_cjk = is_cjk;
         }
     }
+
+    /* Save space_before for post-punctuation insertion */
+    m_space_before.swap(space_before);
 
     vlog("VoiceInput: decoded %d tokens, result='%s'", (int)token_ids.size(), result.c_str());
 
