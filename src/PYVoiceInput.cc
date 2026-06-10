@@ -10,6 +10,8 @@
 #include <fstream>
 #include <sstream>
 #include <glib/gstdio.h>
+#include <condition_variable>
+#include <deque>
 
 using namespace PY;
 
@@ -31,43 +33,123 @@ static std::string g_log_path = "/tmp/vocotype-voice.log";
 
 #include <cmath>
 
-static void playTone(int freq, int duration_ms) {
-    pa_sample_spec ss;
-    ss.format = PA_SAMPLE_S16LE;
-    ss.channels = 1;
-    ss.rate = 44100;
-    int error;
-    pa_simple* s = pa_simple_new(NULL, "ibus-voice-beep",
-                                  PA_STREAM_PLAYBACK, NULL, "beep",
-                                  &ss, NULL, NULL, &error);
-    if (!s) return;
-    int n = ss.rate * duration_ms / 1000;
-    for (int i = 0; i < n; i++) {
-        double t = (double)i / ss.rate;
-        double env = 1.0;
-        int fade = n / 8;
-        if (i < fade) env = (double)i / fade;
-        else if (i > n - fade) env = (double)(n - i) / fade;
-        int16_t sample = (int16_t)(32767 * 0.5 * env * sin(2.0 * M_PI * freq * t));
-        pa_simple_write(s, &sample, sizeof(sample), &error);
+class BeepPlayer {
+public:
+    static BeepPlayer& instance() {
+        static BeepPlayer player;
+        return player;
     }
-    pa_simple_drain(s, &error);
-    pa_simple_free(s);
-}
 
-static std::thread playToneAsync(int freq, int duration_ms) {
-    return std::thread([freq, duration_ms]() {
-        playTone(freq, duration_ms);
-    });
-}
+    void playStart() { enqueue(m_start_tone); }
 
-static void playBeep(const char*) {
-    playTone(880, 50);
-}
+private:
+    BeepPlayer()
+        : m_stop(false),
+          m_stream(nullptr),
+          m_start_tone(makeTone(880, 50)),
+          m_thread(&BeepPlayer::run, this)
+    {
+    }
 
-static void playBeepDone(const char*) {
-    std::thread t = playToneAsync(660, 120);
-    t.detach();
+    ~BeepPlayer() {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_stop = true;
+        }
+        m_cond.notify_one();
+        if (m_thread.joinable())
+            m_thread.join();
+        closeStream();
+    }
+
+    std::vector<int16_t> makeTone(int freq, int duration_ms) {
+        constexpr int rate = 44100;
+        int n = rate * duration_ms / 1000;
+        int fade = std::max(1, n / 8);
+        std::vector<int16_t> tone;
+        tone.reserve(n);
+        for (int i = 0; i < n; i++) {
+            double t = (double)i / rate;
+            double env = 1.0;
+            if (i < fade) env = (double)i / fade;
+            else if (i > n - fade) env = (double)(n - i) / fade;
+            tone.push_back((int16_t)(32767 * 0.5 * env * sin(2.0 * M_PI * freq * t)));
+        }
+        return tone;
+    }
+
+    void enqueue(const std::vector<int16_t>& tone) {
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_queue.push_back(&tone);
+        }
+        m_cond.notify_one();
+    }
+
+    void run() {
+        while (true) {
+            const std::vector<int16_t>* tone = nullptr;
+            {
+                std::unique_lock<std::mutex> lock(m_mutex);
+                m_cond.wait(lock, [this]() { return m_stop || !m_queue.empty(); });
+                if (m_stop)
+                    break;
+                tone = m_queue.front();
+                m_queue.pop_front();
+            }
+
+            play(*tone);
+        }
+    }
+
+    bool ensureStream() {
+        if (m_stream)
+            return true;
+
+        pa_sample_spec ss;
+        ss.format = PA_SAMPLE_S16LE;
+        ss.channels = 1;
+        ss.rate = 44100;
+
+        int error;
+        m_stream = pa_simple_new(NULL, "ibus-voice-beep",
+                                 PA_STREAM_PLAYBACK, NULL, "beep",
+                                 &ss, NULL, NULL, &error);
+        return m_stream != nullptr;
+    }
+
+    void closeStream() {
+        if (!m_stream)
+            return;
+        pa_simple_free(m_stream);
+        m_stream = nullptr;
+    }
+
+    void play(const std::vector<int16_t>& tone) {
+        if (!ensureStream())
+            return;
+
+        int error;
+        if (pa_simple_write(m_stream, tone.data(), tone.size() * sizeof(int16_t), &error) < 0) {
+            closeStream();
+            if (!ensureStream() ||
+                pa_simple_write(m_stream, tone.data(), tone.size() * sizeof(int16_t), &error) < 0) {
+                closeStream();
+            }
+        }
+    }
+
+    bool m_stop;
+    pa_simple* m_stream;
+    std::vector<int16_t> m_start_tone;
+    std::deque<const std::vector<int16_t>*> m_queue;
+    std::mutex m_mutex;
+    std::condition_variable m_cond;
+    std::thread m_thread;
+};
+
+static void playBeep() {
+    BeepPlayer::instance().playStart();
 }
 
 static void vlog(const char* fmt, ...) {
@@ -379,7 +461,7 @@ gboolean VoiceInput::handleKeyEvent(guint keyval, guint keycode, guint modifiers
 
     if (pressed) {
         if (startRecording())
-            playBeep("/usr/share/sounds/freedesktop/stereo/complete.oga");
+            playBeep();
         return TRUE;
     }
 
