@@ -1,3 +1,15 @@
+# Build artifacts
+*.o
+*.lo
+*.la
+.libs/
+
+# Downloaded source packages
+libpinyin-*/
+*.tar.gz
+*.dsc
+*.debian.tar.xz
+
 *.pyc
 configure
 Makefile
