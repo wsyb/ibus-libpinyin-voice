@@ -445,43 +445,47 @@ void VoiceInput::stopRecording() {
         vlog("VoiceInput: transcribe=%lldms, total=%lldms", (long long)transcribe_ms, (long long)total_ms);
         vlog("VoiceInput: result='%s'", result.c_str());
 
-        /* Apply punctuation model if available and text has Chinese */
+        /* Apply punctuation model if available and text has Chinese.
+         * Only send Chinese characters to the model — English letters
+         * confuse it and cause spurious punctuation inside words. */
         if (m_punc_model_loaded && !result.empty()) {
             std::vector<uint32_t> codepoints = decodeUtf8(result);
-            bool has_chinese = false;
-            for (uint32_t cp : codepoints) {
+
+            /* Extract Chinese characters and their original positions */
+            std::vector<int> cn_ids;
+            std::vector<size_t> cn_positions;  /* index into codepoints[] */
+            for (size_t i = 0; i < codepoints.size(); i++) {
+                uint32_t cp = codepoints[i];
                 if ((cp >= 0x4E00 && cp <= 0x9FFF) ||
                     (cp >= 0x3400 && cp <= 0x4DBF) ||
                     (cp >= 0xF900 && cp <= 0xFAFF)) {
-                    has_chinese = true;
-                    break;
-                }
-            }
-            if (has_chinese) {
-                std::vector<int> char_ids;
-                for (uint32_t cp : codepoints) {
                     std::string s = codepointToUtf8(cp);
                     auto it = std::find(m_punc_tokens_str.begin(), m_punc_tokens_str.end(), s);
-                    if (it != m_punc_tokens_str.end()) {
-                        char_ids.push_back((int)(it - m_punc_tokens_str.begin()));
-                    } else {
-                        char_ids.push_back(0);
-                    }
+                    cn_ids.push_back(it != m_punc_tokens_str.end()
+                                     ? (int)(it - m_punc_tokens_str.begin()) : 0);
+                    cn_positions.push_back(i);
                 }
-                std::vector<std::string> punc_result = punctuate(char_ids);
+            }
+
+            if (!cn_ids.empty()) {
+                std::vector<std::string> punc_result = punctuate(cn_ids);
                 if (!punc_result.empty()) {
+                    /* Build a map: codepoint index → punctuation string */
+                    std::vector<std::string> punc_at(codepoints.size());
+                    for (size_t j = 0; j < punc_result.size() && j < cn_positions.size(); j++) {
+                        if (!punc_result[j].empty())
+                            punc_at[cn_positions[j]] = punc_result[j];
+                    }
+
                     std::string punctuated;
                     for (size_t i = 0; i < codepoints.size(); i++) {
-                        /* Insert space before this character if marked */
                         if (i < space_before.size() && space_before[i])
                             punctuated += ' ';
                         punctuated += codepointToUtf8(codepoints[i]);
-                        if (i < punc_result.size() && !punc_result[i].empty()) {
-                            punctuated += punc_result[i];
-                        }
+                        punctuated += punc_at[i];
                     }
                     result = punctuated;
-                    space_before.clear();  /* already applied */
+                    space_before.clear();
                     vlog("VoiceInput: after punctuate: '%s'", result.c_str());
                 }
             }
