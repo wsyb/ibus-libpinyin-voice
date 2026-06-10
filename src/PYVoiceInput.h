@@ -38,8 +38,8 @@ private:
     void shutdownOnnxRuntime();
     void startRecording();
     void stopRecording();
-    std::string transcribe(const std::vector<int16_t>& samples);
-    std::string transcribeSenseVoice(const std::vector<float>& features, int num_frames);
+    std::string transcribe(const std::vector<int16_t>& samples,
+                           std::vector<bool>& space_before);
     void recordThread();
 
     static void streamReadCb(pa_stream* s, size_t nbytes, void* userdata);
@@ -60,23 +60,15 @@ private:
     const OrtApi* m_api;
     OrtEnv* m_env;
 
-    /* Paraformer model (current) */
+    /* Paraformer model */
     OrtSession* m_session;
     bool m_model_loaded;
     std::vector<std::string> m_tokens;
-
-    /* SenseVoice model */
-    OrtSession* m_sv_session;
-    bool m_sv_model_loaded;
-    std::vector<std::string> m_sv_tokens;
 
     /* Punctuation model */
     OrtSession* m_punc_session;
     bool m_punc_model_loaded;
     std::vector<std::string> m_punc_tokens_str;
-
-    /* Word boundary info from last transcribe() */
-    std::vector<bool> m_space_before;
 
     std::vector<int16_t> m_record_buffer;
     std::mutex m_buffer_mutex;
@@ -85,7 +77,6 @@ private:
 
     std::string m_model_path;
     std::string m_cmvn_path;
-    std::string m_sv_model_path;
     std::string m_punc_model_path;
 
     std::vector<std::string> punctuate(const std::vector<int>& token_ids);
