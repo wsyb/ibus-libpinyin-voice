@@ -460,12 +460,24 @@ gboolean VoiceInput::handleKeyEvent(guint keyval, guint keycode, guint modifiers
         return FALSE;
 
     if (pressed) {
+        /* Debounce: some keyboards generate release+press pairs for modifier
+         * key auto-repeat. Ignore a press that arrives too soon after the
+         * last release to avoid starting a new recording + beep. */
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - m_ctrl_press_time).count();
+        if (elapsed > 0 && elapsed < 200) {
+            vlog("VoiceInput: ignoring rapid press (debounce, %lldms after release)",
+                 (long long)elapsed);
+            return TRUE;
+        }
         if (startRecording())
             playBeep();
         return TRUE;
     }
 
     if (!pressed && m_recording.load()) {
+        m_ctrl_press_time = std::chrono::steady_clock::now();
         stopRecording();
         return TRUE;
     }
@@ -611,7 +623,6 @@ void VoiceInput::recordThread() {
     pa_mainloop* ml = pa_mainloop_new();
     if (!ml) {
         vlog("VoiceInput: pa_mainloop_new failed");
-        m_recording.store(false);
         return;
     }
     pa_mainloop_api* mlapi = pa_mainloop_get_api(ml);
@@ -623,7 +634,6 @@ void VoiceInput::recordThread() {
             vlog("VoiceInput: pa context failed");
             pa_context_unref(ctx);
             pa_mainloop_free(ml);
-            m_recording.store(false);
             return;
         }
         pa_mainloop_iterate(ml, 1, NULL);
@@ -640,7 +650,6 @@ void VoiceInput::recordThread() {
         pa_context_disconnect(ctx);
         pa_context_unref(ctx);
         pa_mainloop_free(ml);
-        m_recording.store(false);
         return;
     }
 
